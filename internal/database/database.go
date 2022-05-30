@@ -12,9 +12,7 @@ var Instance *gorm.DB
 var err error
 
 func Connect(connectionString string) {
-	Instance, err = gorm.Open(mysql.Open(connectionString), &gorm.Config{
-		// CreateBatchSize: 3000,
-	})
+	Instance, err = gorm.Open(mysql.Open(connectionString), &gorm.Config{})
 	if err != nil {
 		log.Fatal(err)
 		panic("Cannot connect to DB")
