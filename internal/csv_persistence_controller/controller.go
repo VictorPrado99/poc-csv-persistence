@@ -39,11 +39,10 @@ func CreateOrders(w http.ResponseWriter, r *http.Request) {
 	var orders api.Orders
 
 	json.NewDecoder(r.Body).Decode(&orders)
-	for _, order := range orders {
-		fmt.Println("Posting -> ", orders)
-		database.Instance.Create(&order)
-	}
-	json.NewEncoder(w).Encode(orders)
+	database.Instance.CreateInBatches(orders, 3000)
+	// database.Instance.Create(&orders)
+	// json.NewEncoder(w).Encode(orders)
+	fmt.Println("Post Finished")
 }
 
 func checkIfOrderExists(orderId string) bool {
