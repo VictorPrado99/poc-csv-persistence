@@ -37,7 +37,7 @@ func CreateOrders(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("/Orders", "POST Verb", "Called")
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
+	w.WriteHeader(http.StatusCreated)
 	var orders api.Orders
 
 	json.NewDecoder(r.Body).Decode(&orders)
