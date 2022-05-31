@@ -1,4 +1,4 @@
 {
-    "connection_string": "root:root@tcp(mysql:3306)/csv_persistence",
+    "connection_string": "root:root@tcp(localhost:3306)/csv_persistence",
     "port": 9001
 }

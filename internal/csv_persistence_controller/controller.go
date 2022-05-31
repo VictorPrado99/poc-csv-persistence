@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/VictorPrado99/poc-csv-persistence/internal/database"
 	"github.com/VictorPrado99/poc-csv-persistence/pkg/api"
 	"github.com/gorilla/mux"
+	"gorm.io/gorm"
 )
 
 const (
@@ -26,9 +28,6 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/orders", GetOrders).Methods(GET)
 	r.HandleFunc("/orders", CreateOrders).Methods(POST)
 	r.HandleFunc("/orders/{country}", CountOrders).Methods(HEAD)
-	// r.HandleFunc("/orders/{id}", GetOrderById).Methods(GET)
-	// r.HandleFunc("/orders/{id}", UpdateOrder).Methods(PUT)
-	// r.HandleFunc("/orders/{id}", DeleteOrder).Methods(DELETE)
 
 	return r
 }
@@ -44,13 +43,6 @@ func CreateOrders(w http.ResponseWriter, r *http.Request) {
 	database.Instance.CreateInBatches(orders, 3000)
 	fmt.Println("Post Finished")
 }
-
-// func checkIfOrderExists(orderId string) bool {
-// 	var order api.Order
-// 	database.Instance.First(&order, orderId)
-
-// 	return order.Id != 0
-// }
 
 type HeadHeader struct {
 	OrderCount int64
@@ -76,14 +68,18 @@ func GetOrders(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("/Orders", "GET Verb", "Called")
 
-	offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
+	query := r.URL.Query()
+
+	offset, err := strconv.Atoi(query.Get("offset"))
+	query.Del("offset")
 
 	// Default Value
 	if err != nil {
 		offset = 0
 	}
 
-	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit, err := strconv.Atoi(query.Get("limit"))
+	query.Del("limit")
 
 	// Default Value
 	if err != nil {
@@ -95,64 +91,73 @@ func GetOrders(w http.ResponseWriter, r *http.Request) {
 		limit = 100
 	}
 
-	sortParameter := r.URL.Query().Get("sort")
+	sortParameter := query.Get("sort")
+	query.Del("sort")
+
 	if sortParameter == "" {
 		sortParameter = "asc"
 	} else if sortParameter != "asc" && sortParameter != "desc" {
 		sortParameter = "asc"
 	}
 
-	filterBy := r.URL.Query().Get("filterBy")
-	if filterBy == "" {
-		filterBy = "id"
+	filterBy := "id " + sortParameter
+
+	var scopesBuilder []func(db *gorm.DB) *gorm.DB
+
+	countries := query.Get("country")
+
+	if countries != "" {
+		scopesBuilder = append(scopesBuilder, CountriesFilter(strings.Split(countries, ",")))
 	}
 
-	database.Instance.Offset(offset).Limit(limit).Order(filterBy + " " + sortParameter).Find(&orders)
+	date := query.Get("date")
+
+	if date != "" {
+		scopesBuilder = append(scopesBuilder, DateFilter(date))
+	}
+
+	weightLimitStr := query.Get("weightLimit")
+
+	if weightLimitStr != "" {
+		weightLimitF, err := strconv.ParseFloat(weightLimitStr, 32)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		weightLimit := float32(weightLimitF)
+		scopesBuilder = append(scopesBuilder, WeightLimitFilter(weightLimit))
+	}
+
+	database.Instance.Offset(offset).Limit(limit).Order(filterBy).Scopes(scopesBuilder...).Find(&orders)
+
+	if !(len(orders) > 0) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 
 	nextOffset := offset + len(orders)
 
-	// database.Instance.Find(&orders)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Add("x-next-offset", fmt.Sprintf("%d", nextOffset))
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(orders)
 }
 
-// func GetOrderById(w http.ResponseWriter, r *http.Request) {
-// 	orderId := mux.Vars(r)["id"]
-// 	if !checkIfOrderExists(orderId) {
-// 		json.NewEncoder(w).Encode("order Not Found!")
-// 		return
-// 	}
-// 	var order api.Order
-// 	database.Instance.First(&order, orderId)
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(order)
-// }
+func CountriesFilter(countries []string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("country in (?)", countries)
+	}
+}
 
-// func UpdateOrder(w http.ResponseWriter, r *http.Request) {
-// 	orderId := mux.Vars(r)["id"]
-// 	if !checkIfOrderExists(orderId) {
-// 		json.NewEncoder(w).Encode("order Not Found!")
-// 		return
-// 	}
-// 	var order api.Order
-// 	database.Instance.First(&order, orderId)
-// 	json.NewDecoder(r.Body).Decode(&order)
-// 	database.Instance.Save(&order)
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(order)
-// }
+func DateFilter(date string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("date = (?)", date)
+	}
+}
 
-// func DeleteOrder(w http.ResponseWriter, r *http.Request) {
-// 	w.Header().Set("Content-Type", "application/json")
-// 	orderId := mux.Vars(r)["id"]
-// 	if !checkIfOrderExists(orderId) {
-// 		w.WriteHeader(http.StatusNotFound)
-// 		json.NewEncoder(w).Encode("order Not Found!")
-// 		return
-// 	}
-// 	var order api.Order
-// 	database.Instance.Delete(&order, orderId)
-// 	json.NewEncoder(w).Encode("order Deleted Successfully!")
-// }
+func WeightLimitFilter(weightLimit float32) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("parcel_weight <= (?)", weightLimit)
+	}
+}
