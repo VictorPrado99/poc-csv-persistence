@@ -21,9 +21,3 @@ func CreateOrder(id int, email string, phoneNumber string, parcelWeight float32,
 }
 
 type Orders []Order
-
-type Pagination struct {
-	Limit int    `json:"limit"`
-	Page  int    `json:"page"`
-	Sort  string `json:"sort"`
-}
