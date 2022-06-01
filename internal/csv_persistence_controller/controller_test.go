@@ -3,12 +3,19 @@ package csvpersistencecontroller
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/VictorPrado99/poc-csv-persistence/internal/database"
+	"github.com/VictorPrado99/poc-csv-persistence/pkg/api"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -21,56 +28,105 @@ func TestSetupRouter(t *testing.T) {
 	}
 }
 
-func StartMockMySqlDb(db *sql.DB, mock sqlmock.Sqlmock) {
+func StartMockMySqlDb() (*sql.DB, sqlmock.Sqlmock) {
+	db, mock, _ := sqlmock.New()
+
 	dialec := mysql.New(mysql.Config{
 		Conn: db,
 	})
 
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT VERSION()")).WillReturnRows(mock.NewRows([]string{"version"}).AddRow(1))
 	database.Instance, _ = gorm.Open(dialec, &gorm.Config{})
+
+	return db, mock
 }
 
-func TestCreateOrders(t *testing.T) {
-	db, mock, _ := sqlmock.New()
+func TestCreateOrdersSuccess(t *testing.T) {
+	_, mock := StartMockMySqlDb()
 
-	StartMockMySqlDb(db, mock)
+	data := api.Order{
+		Id:           4,
+		Email:        "test@test.com",
+		PhoneNumber:  "055 11 6583 2753",
+		ParcelWeight: 54.74,
+		Date:         "2022-05-31",
+		Country:      "Brazil",
+	}
 
-	str := `{"id": 1,"email": "test1e@teste","phone_number": "351 961 251 326","parcel_weight": 22.4,"date": "2022-03-12","country": "Portugal"}`
+	json, _ := json.Marshal(data)
 
-	dataMock := []byte(str)
-
-	r := httptest.NewRequest("POST", "/orders", bytes.NewBuffer(dataMock))
+	r := httptest.NewRequest("POST", "/orders", bytes.NewBuffer(json))
 
 	w := httptest.NewRecorder()
 
 	mock.ExpectBegin()
 	mock.ExpectCommit()
-	// mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `orders` (`email`,`phone_number`,`parcel_weight`,`date`,`country`,`id`) VALUES (?)")).
-	// 	WithArgs("test1e@teste", "351 961 251 326", 22.4, "2022-03-12", "Portugal").
-	// 	WillReturnResult(sqlmock.NewResult(0, 1))
-
-	// mock.ExpectClose()
 
 	CreateOrders(w, r)
 
-	// defer w.Result().Body.Close()
+	if w.Result().StatusCode != 201 {
+		t.Fatalf("Didn't receive status 201, received status %d", w.Result().StatusCode)
+	}
 
-	// data, err := ioutil.ReadAll(r.Body)
+	w.Result().Body.Close()
+}
 
-	// if err != nil {
-	// 	t.Errorf("expected error to be nil got %v", err)
-	// }
+func TestCreateOrdersFail(t *testing.T) {
+	_, mock := StartMockMySqlDb()
 
-	// fmt.Println(string(data))
+	data := api.Order{
+		Id:           4,
+		Email:        "test@test.com",
+		PhoneNumber:  "055 11 6583 2753",
+		ParcelWeight: 54.74,
+		Date:         "2022-05-31",
+		Country:      "Brazil",
+	}
 
-	// if string(data) ==
+	jsonData, _ := json.Marshal(data)
 
-	// var data struct{}
+	r := httptest.NewRequest(http.MethodPost, "/orders", bytes.NewBuffer(jsonData))
 
-	// json.Unmarshal(dataMock, &data)
+	w := httptest.NewRecorder()
 
-	// fmt.Println(data)
+	mock.ExpectBegin()
+	mock.ExpectCommit().WillReturnError(errors.New("fail to save data"))
 
-	// mock.ExpectBegin()
-	// mock.ExpectQuery("INSERT INTO `orders` (`email`,`phone_number`,`parcel_weight`,`date`,`country`,`id`) VALUES ('test1e@teste','351 961 251 326',26.400000,'2022-03-12','Portugal',100065421),('test1e@teste','351 961 251 326',0.000000,'2022-03-12','Portugal',100065422),('test1e@teste','351 961 251 326',0.000000,'2022-03-12','Portugal',100065421),('test1e@teste','351 961 251 326',0.000000,'2022-03-12','Portugal',4)")
+	CreateOrders(w, r)
+
+	if w.Result().StatusCode != 208 {
+		t.Fatalf("Didn't receive status 208, received status %d", w.Result().StatusCode)
+	}
+
+	w.Result().Body.Close()
+}
+
+func TestHeadCount(t *testing.T) {
+	// _, mock := StartMockMySqlDb()
+
+	// r := httptest.NewRequest(http.MethodGet, "/orders", nil)
+
+	// w := httptest.NewRecorder()
+}
+
+func TestGetWithoutFilters(t *testing.T) {
+	_, mock := StartMockMySqlDb()
+
+	orderType := reflect.TypeOf(api.Order{})
+	var columns []string
+
+	for i := 0; i < orderType.NumField(); i++ {
+		columns = append(columns, orderType.Field(i).Name)
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	w := httptest.NewRecorder()
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `orders` ORDER BY id asc LIMIT 10")).WillReturnRows(mock.NewRows(columns))
+
+	GetOrders(w, r)
+
+	data, _ := ioutil.ReadAll(w.Body)
+
+	fmt.Println(string(data))
 }

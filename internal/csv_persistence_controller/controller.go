@@ -26,11 +26,11 @@ func SetupRoutes() *mux.Router {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/orders", GetOrders).Methods(GET)
-	fmt.Println("[GET] /Orders", "Created")
+	fmt.Println("[GET] /Orders")
 	r.HandleFunc("/orders", CreateOrders).Methods(POST)
-	fmt.Println("[POST] /Orders", "Created")
+	fmt.Println("[POST] /Orders")
 	r.HandleFunc("/orders/{country}", CountOrders).Methods(HEAD)
-	fmt.Println("[HEAD] /Orders/{country}", "Created")
+	fmt.Println("[HEAD] /Orders/{country}")
 
 	return r
 }
@@ -44,7 +44,7 @@ func CreateOrders(w http.ResponseWriter, r *http.Request) {
 	err := database.Instance.CreateInBatches(orders, 3000).Error
 
 	if err != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
+		w.WriteHeader(http.StatusAlreadyReported)
 		fmt.Println("Data Not Saved ->", err)
 		fmt.Fprintf(w, "Couldn't save data ->  %v", err)
 		return
