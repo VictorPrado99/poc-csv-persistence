@@ -18,7 +18,7 @@ This intended to accept large files. used with [this repository](https://github.
 ]
 ```
 
-## `GET` /orders
+### `GET` /orders
 
 Get a paginated arrays of orders
 
@@ -47,11 +47,11 @@ Filter by date, you can filter justo for a single date
 - *weightLimit*
 Will retrieve everything of weight equal or less
 
-## `POST` /orders
+### `POST` /orders
 
 This endpoint will receive a array of order in the body, and will persist everything in the database
 
-## `HEAD` /orders/{country}
+### `HEAD` /orders/{country}
 
 Will retrieve the sum of weight and how many orders you have per country
 
@@ -64,3 +64,30 @@ e.g
     "X-Weight-Sum": 20.12
 }
 ```
+
+
+## Architeture
+
+The server will look for a file at your ***$HOME*** named config.json, this file has the following pattern
+
+```json
+{
+    "connection_string": "root:root@tcp(mysql:3306)/csv_persistence",
+    "port": 9001
+}
+```
+
+This place can be overwriten with the enviroment variable ***$PERSISTENCE_HOME*** 
+
+The Docker Image is [available here](https://hub.docker.com/repository/docker/victorprado99/poc-csv-persistence)
+ 
+### Docker-Compose
+
+The ./dev directory, we have a docker-compose.yml intended to developing and unit tests. The file will run only a database instance which the api will connect.  
+At the root dir, have docker-compose file which can run the entire application, just run
+
+```bash
+docker-compose up
+```
+
+And you are ready to make requests at the api, with postman, with [poc-persistence-uploader](https://github.com/VictorPrado99/poc-csv-uploader) or whatever client you like.
