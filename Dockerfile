@@ -1,31 +1,18 @@
-# Start from golang base image
-FROM golang:alpine as builder
+FROM golang:1.18
 
-# Add Maintainer info
-LABEL maintainer="VictorPrado99"
+ENV PERSISTENCE_HOME="/.csv_persistence"
 
-# Install git.
-# Git is required for fetching the dependencies.
-RUN apk update && apk add --no-cache git && apk add --no-cach bash && apk add build-base
+COPY ./config.json /.csv_persistence/config.json
 
-# Setup folders
-RUN mkdir /app
-WORKDIR /app
+WORKDIR /usr/src/app
 
-# Copy the source from the current directory to the working Directory inside the container
-COPY . .
+# pre-copy/cache go.mod for pre-downloading dependencies and only redownloading them in subsequent builds if they change
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
 
-# Download all the dependencies
-RUN go get -d -v ./...
+COPY . /usr/src/app
+RUN go build -v -o /usr/local/bin/app
 
-# Install the package
-RUN go install -v ./...
-
-# Build the Go app
-RUN go build -o /build
-
-# Expose port 9001 to the outside world
 EXPOSE 9001
 
-# Run the executable
-CMD [ "/build" ]
+CMD ["app"]

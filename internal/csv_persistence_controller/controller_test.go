@@ -1,12 +1,10 @@
-package csvpersistencecontroller
+package csvpersistencecontroller_test
 
 import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -14,14 +12,16 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	c "github.com/VictorPrado99/poc-csv-persistence/internal/csv_persistence_controller"
 	"github.com/VictorPrado99/poc-csv-persistence/internal/database"
 	"github.com/VictorPrado99/poc-csv-persistence/pkg/api"
+	"github.com/gorilla/mux"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 func TestSetupRouter(t *testing.T) {
-	router := SetupRoutes()
+	router := c.SetupRoutes()
 
 	if router == nil {
 		t.Fatalf("Failed to create router")
@@ -62,7 +62,7 @@ func TestCreateOrdersSuccess(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectCommit()
 
-	CreateOrders(w, r)
+	c.CreateOrders(w, r)
 
 	if w.Result().StatusCode != 201 {
 		t.Fatalf("Didn't receive status 201, received status %d", w.Result().StatusCode)
@@ -92,7 +92,7 @@ func TestCreateOrdersFail(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectCommit().WillReturnError(errors.New("fail to save data"))
 
-	CreateOrders(w, r)
+	c.CreateOrders(w, r)
 
 	if w.Result().StatusCode != 208 {
 		t.Fatalf("Didn't receive status 208, received status %d", w.Result().StatusCode)
@@ -101,32 +101,56 @@ func TestCreateOrdersFail(t *testing.T) {
 	w.Result().Body.Close()
 }
 
-func TestHeadCount(t *testing.T) {
-	// _, mock := StartMockMySqlDb()
-
-	// r := httptest.NewRequest(http.MethodGet, "/orders", nil)
-
-	// w := httptest.NewRecorder()
-}
-
+// A test get without filter analysing the query return, not the best solution, but just to test a hypothesis. A better version of this method is at controller2_test.go
 func TestGetWithoutFilters(t *testing.T) {
-	_, mock := StartMockMySqlDb()
+	_, mock := StartMockMySqlDb() // Generate a db mock instance
 
 	orderType := reflect.TypeOf(api.Order{})
 	var columns []string
 
+	// Get columns of the entity
 	for i := 0; i < orderType.NumField(); i++ {
 		columns = append(columns, orderType.Field(i).Name)
 	}
 
+	// Generate mock for request and write
 	r := httptest.NewRequest(http.MethodGet, "/orders", nil)
 	w := httptest.NewRecorder()
 
+	// Query we are expecting, end what will define if the test is a success or not
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `orders` ORDER BY id asc LIMIT 10")).WillReturnRows(mock.NewRows(columns))
 
-	GetOrders(w, r)
+	// Run the actual endpoint
+	c.GetOrders(w, r)
+}
 
-	data, _ := ioutil.ReadAll(w.Body)
+func TestGetBadWeightLimit(t *testing.T) {
+	// Generate mock for request and write
+	r := httptest.NewRequest(http.MethodGet, "/orders?weightLimit=Foo", nil)
+	w := httptest.NewRecorder()
 
-	fmt.Println(string(data))
+	// Run the actual endpoint
+	c.GetOrders(w, r)
+
+	if w.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("Status Code different from %d", http.StatusBadRequest)
+	}
+}
+
+func TestHeadCount(t *testing.T) {
+	_, mock := StartMockMySqlDb() // Generate a db mock instance
+
+	// Generate mock for request and write
+	r := httptest.NewRequest(http.MethodHead, "/orders/Brazil", nil)
+	w := httptest.NewRecorder()
+
+	// Query we are expecting, end what will define if the test is a success or not
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT count(*) as order_count, sum(parcel_weight) as total FROM `orders` WHERE country = ? ORDER BY `orders`.`id` LIMIT 1")).
+		WithArgs("Brazil").
+		WillReturnRows(mock.NewRows([]string{"order_count", "parcel_weight"}).AddRow(2, 84.74))
+
+	// Run the actual endpoint
+	router := mux.NewRouter()
+	router.HandleFunc("/orders/{country}", c.CountOrders)
+	router.ServeHTTP(w, r)
 }

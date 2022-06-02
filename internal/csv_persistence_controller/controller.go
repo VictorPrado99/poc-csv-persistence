@@ -25,6 +25,8 @@ const (
 func SetupRoutes() *mux.Router {
 	r := mux.NewRouter()
 
+	fmt.Println("Initializing routes...")
+
 	r.HandleFunc("/orders", GetOrders).Methods(GET)
 	fmt.Println("[GET] /Orders")
 	r.HandleFunc("/orders", CreateOrders).Methods(POST)
@@ -36,20 +38,21 @@ func SetupRoutes() *mux.Router {
 }
 
 func CreateOrders(w http.ResponseWriter, r *http.Request) {
-
 	w.Header().Set("Content-Type", "plain/text")
 	var orders api.Orders
 
-	json.NewDecoder(r.Body).Decode(&orders)
-	err := database.Instance.CreateInBatches(orders, 3000).Error
+	json.NewDecoder(r.Body).Decode(&orders)                      // Decode the Json into the object
+	err := database.Instance.CreateInBatches(orders, 3000).Error //Create in batches and return error if any
 
-	if err != nil {
-		w.WriteHeader(http.StatusAlreadyReported)
-		fmt.Println("Data Not Saved ->", err)
-		fmt.Fprintf(w, "Couldn't save data ->  %v", err)
+	if err != nil { // Have some error
+		// Actually, this isn't a really good practice, I should see map all the error who could happen, but at this project I choose the erro which will be common here,
+		w.WriteHeader(http.StatusAlreadyReported)        // Already reported, because the most common error, is duplicate key in this case
+		fmt.Println("Data Not Saved ->", err)            // Report at the console. This could be a observability tool, or some form of log
+		fmt.Fprintf(w, "Couldn't save data ->  %v", err) //Return the erro to the client. Not best Practice, because can expose internal details of database.
 		return
 	}
 
+	// If everything is fine, return to the client a created StatusCode
 	w.WriteHeader(http.StatusCreated)
 	fmt.Println("Data Saved")
 	fmt.Fprintf(w, "Data saved")
@@ -58,7 +61,7 @@ func CreateOrders(w http.ResponseWriter, r *http.Request) {
 // Data type to use a single query to count
 type HeadHeader struct {
 	OrderCount int64
-	Total      float64
+	Total      float32
 }
 
 func CountOrders(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +115,7 @@ func GetOrders(w http.ResponseWriter, r *http.Request) {
 		sortParameter = "asc"
 	}
 
+	// A simple filter for correctly sort based on id
 	filterBy := "id " + sortParameter
 
 	// A slice to get function to create the WHERE Clause in Gorm, that way, we can build the clause dynamically base on functions

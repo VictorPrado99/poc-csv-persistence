@@ -1,7 +1,7 @@
 version: '3.9'
 services:
   app:
-    image: victorprado99/poc-csv-persistence
+    image: victorprado99/poc-csv-persistence:0.0.1
     tty: true
     ports:
       - 9001:9001
